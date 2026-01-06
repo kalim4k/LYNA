@@ -1,0 +1,21 @@
+{
+  "short_name": "LYNA",
+  "name": "LYNA Empire",
+  "icons": [
+    {
+      "src": "https://celinaroom.com/wp-content/uploads/2026/01/ChatGPT-Image-6-janv.-2026-22_05_41.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://celinaroom.com/wp-content/uploads/2026/01/ChatGPT-Image-6-janv.-2026-22_05_41.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#059669",
+  "background_color": "#ffffff",
+  "orientation": "portrait"
+}
