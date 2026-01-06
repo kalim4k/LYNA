@@ -5,15 +5,17 @@
     {
       "src": "https://celinaroom.com/wp-content/uploads/2026/01/ChatGPT-Image-6-janv.-2026-22_05_41.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "https://celinaroom.com/wp-content/uploads/2026/01/ChatGPT-Image-6-janv.-2026-22_05_41.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "theme_color": "#059669",
   "background_color": "#ffffff",
