@@ -1,5 +1,5 @@
 // Service Worker pour LYNA PWA
-const CACHE_NAME = 'lyna-pwa-v1';
+const CACHE_NAME = 'lyna-pwa-v2'; // Version bumpée pour forcer la mise à jour
 const urlsToCache = [
   '/',
   '/index.html',
