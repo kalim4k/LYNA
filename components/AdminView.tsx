@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { OrderItem, Product, Service, UserProfile } from '../types';
+import { OrderItem, Product, Service, UserProfile, ProductVariant } from '../types';
 import ConfirmationModal from './ConfirmationModal';
 import { 
   Package, 
@@ -20,7 +20,8 @@ import {
   AlertCircle,
   MessageCircle, 
   Phone,
-  Trash2
+  Trash2,
+  Scale
 } from 'lucide-react';
 
 const AdminView: React.FC = () => {
@@ -35,7 +36,7 @@ const AdminView: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // Form States
-  const [productForm, setProductForm] = useState<Partial<Product>>({ category: 'tea', price: 0, name: '', description: '', image: '' });
+  const [productForm, setProductForm] = useState<Partial<Product>>({ category: 'tea', price: 0, name: '', description: '', image: '', variants: [] });
   const [productImageFile, setProductImageFile] = useState<File | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   
@@ -240,6 +241,27 @@ const AdminView: React.FC = () => {
 
   // --- HANDLERS PRODUCTS ---
 
+  const handleVariantChange = (index: number, field: keyof ProductVariant, value: string | number) => {
+    const newVariants = [...(productForm.variants || [])];
+    if (index >= 0 && index < newVariants.length) {
+      newVariants[index] = { ...newVariants[index], [field]: value };
+      setProductForm({ ...productForm, variants: newVariants });
+    }
+  };
+
+  const addVariant = () => {
+    setProductForm({
+      ...productForm,
+      variants: [...(productForm.variants || []), { label: '500g', price: 1000 }]
+    });
+  };
+
+  const removeVariant = (index: number) => {
+    const newVariants = [...(productForm.variants || [])];
+    newVariants.splice(index, 1);
+    setProductForm({ ...productForm, variants: newVariants });
+  };
+
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -252,12 +274,20 @@ const AdminView: React.FC = () => {
         catch (err) { alert("Image invalide."); setIsSubmitting(false); return; }
       }
 
+      // Si c'est une farine, on s'assure qu'il y a un prix de base pour l'affichage (le min)
+      let basePrice = Number(productForm.price) || 0;
+      if (productForm.category === 'flour' && productForm.variants && productForm.variants.length > 0) {
+          const prices = productForm.variants.map(v => Number(v.price));
+          basePrice = Math.min(...prices);
+      }
+
       const productData = { 
         name: productForm.name?.trim() || 'Produit sans nom',
         category: productForm.category,
-        price: Number(productForm.price) || 0,
+        price: basePrice,
         description: productForm.description?.trim() || '',
-        image: imageUrl || ''
+        image: imageUrl || '',
+        variants: productForm.category === 'flour' ? productForm.variants : null // On sauvegarde les variantes
       };
 
       if (editingProductId) {
@@ -287,7 +317,7 @@ const AdminView: React.FC = () => {
   };
 
   const handleCancelProductEdit = () => {
-    setProductForm({ category: 'tea', price: 0, name: '', description: '', image: '' });
+    setProductForm({ category: 'tea', price: 0, name: '', description: '', image: '', variants: [] });
     setEditingProductId(null);
     setProductImageFile(null);
   };
@@ -528,15 +558,51 @@ const AdminView: React.FC = () => {
                       </select>
                    </div>
                    <div>
-                      <label className="text-xs font-bold text-stone-500 uppercase">Prix (FCFA)</label>
+                      <label className="text-xs font-bold text-stone-500 uppercase">Prix {productForm.category === 'flour' ? 'de base' : ''} (FCFA)</label>
                       <input 
                         type="number" required
                         className="w-full mt-1 p-3 bg-stone-50 rounded-xl border-none focus:ring-2 focus:ring-emerald-500/20"
                         value={productForm.price || ''}
                         onChange={e => setProductForm({...productForm, price: parseFloat(e.target.value)})}
+                        readOnly={productForm.category === 'flour'} // Si farine, le prix est déterminé par les variantes
+                        placeholder={productForm.category === 'flour' ? 'Déterminé par variante' : ''}
                       />
                    </div>
                 </div>
+
+                {/* Gestion des Variantes pour les Farines */}
+                {productForm.category === 'flour' && (
+                  <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                    <div className="flex items-center justify-between mb-3">
+                        <label className="text-xs font-bold text-stone-500 uppercase flex items-center gap-2"><Scale size={14} /> Variantes (Grammage)</label>
+                        <button type="button" onClick={addVariant} className="text-xs text-emerald-600 font-bold flex items-center gap-1 hover:underline"><PlusCircle size={12} /> Ajouter poids</button>
+                    </div>
+                    
+                    {(!productForm.variants || productForm.variants.length === 0) && (
+                        <p className="text-xs text-stone-400 italic text-center py-2">Aucune variante. Ajoutez des poids (ex: 250g).</p>
+                    )}
+
+                    <div className="space-y-2">
+                        {productForm.variants?.map((variant, idx) => (
+                            <div key={idx} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
+                                <input 
+                                    type="text" placeholder="Poids (ex: 500g)"
+                                    className="flex-1 p-2 bg-white rounded-lg border-none text-sm shadow-sm"
+                                    value={variant.label}
+                                    onChange={(e) => handleVariantChange(idx, 'label', e.target.value)}
+                                />
+                                <input 
+                                    type="number" placeholder="Prix"
+                                    className="w-24 p-2 bg-white rounded-lg border-none text-sm shadow-sm"
+                                    value={variant.price}
+                                    onChange={(e) => handleVariantChange(idx, 'price', Number(e.target.value))}
+                                />
+                                <button type="button" onClick={() => removeVariant(idx)} className="p-2 text-red-400 hover:text-red-600"><XCircle size={16} /></button>
+                            </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Gestion Image Produit */}
                 <div>
@@ -603,7 +669,10 @@ const AdminView: React.FC = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                           <h4 className="font-bold text-stone-900 text-sm truncate">{product.name}</h4>
-                          <p className="text-xs text-stone-500">{product.category === 'tea' ? 'Thé' : 'Farine'} • {product.price} F</p>
+                          <p className="text-xs text-stone-500">
+                             {product.category === 'tea' ? 'Thé' : 'Farine'} • 
+                             {product.variants ? ` ${product.variants.length} formats` : ` ${product.price} F`}
+                          </p>
                       </div>
                       <div className="flex items-center gap-2">
                           <button onClick={() => handleEditProduct(product)} className="p-2 bg-stone-50 text-stone-600 rounded-lg hover:bg-emerald-50 hover:text-emerald-600 transition-colors">

@@ -49,7 +49,7 @@ export const PRODUCTS: Product[] = [
     id: 'fari-moringa',
     name: 'FARI-MO',
     category: 'flour',
-    price: 1000, // Display price (base or middle)
+    price: 500, // Display price (starting at)
     image: 'https://id-preview--6f4582b2-8bc5-4a89-8e84-f6789b42b046.lovable.app/assets/farine-moringa-C9UuYEBN.jpg',
     description: 'Farine enrichie au Moringa. Idéale pour vos bouillies et pâtisseries, apportant une valeur nutritionnelle exceptionnelle.',
     variants: [

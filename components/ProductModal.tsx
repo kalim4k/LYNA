@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Minus, Plus, ShoppingBag } from 'lucide-react';
+import { X, Minus, Plus, ShoppingBag, Scale } from 'lucide-react';
 import { Product, ProductVariant } from '../types';
 
 interface ProductModalProps {
@@ -16,6 +16,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
   useEffect(() => {
     if (isOpen && product) {
       setQuantity(1);
+      // Select the first variant by default if exists
       if (product.variants && product.variants.length > 0) {
         setSelectedVariant(product.variants[0]);
       } else {
@@ -84,22 +85,27 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
             {product.description}
           </p>
 
-          {/* Variants Selector (If Flours) */}
+          {/* Variants Selector (If Flours) - UPDATED DESIGN */}
           {product.variants && (
             <div className="space-y-3">
-              <span className="text-xs font-bold text-gray-900 uppercase tracking-wide">Choisir le poids</span>
-              <div className="flex flex-wrap gap-2">
+              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1">
+                  <Scale size={14} /> Choisissez le format
+              </span>
+              <div className="grid grid-cols-3 gap-2">
                 {product.variants.map((variant, idx) => (
                   <button
                     key={idx}
                     onClick={() => setSelectedVariant(variant)}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 border ${
+                    className={`flex flex-col items-center justify-center py-3 px-1 rounded-xl transition-all duration-200 border-2 ${
                       selectedVariant?.label === variant.label
-                        ? 'bg-gray-900 text-white border-gray-900 shadow-md'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                        ? 'bg-stone-900 text-white border-stone-900 shadow-md transform scale-[1.02]'
+                        : 'bg-white text-stone-600 border-stone-100 hover:border-stone-300 hover:bg-stone-50'
                     }`}
                   >
-                    {variant.label} <span className="opacity-70 text-[10px] ml-1">{variant.price}F</span>
+                    <span className="text-sm font-bold">{variant.label}</span>
+                    <span className={`text-[10px] font-medium mt-0.5 ${selectedVariant?.label === variant.label ? 'text-stone-300' : 'text-stone-400'}`}>
+                        {variant.price} F
+                    </span>
                   </button>
                 ))}
               </div>
@@ -107,27 +113,27 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
           )}
 
           {/* Quantity and Price Calculation */}
-          <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-4 bg-white px-1.5 py-1.5 rounded-xl border border-gray-200 shadow-sm">
+          <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100 flex items-center justify-between">
+            <div className="flex items-center gap-4 bg-white px-1.5 py-1.5 rounded-xl border border-stone-200 shadow-sm">
                 <button 
                     onClick={handleDecrement}
-                    className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
+                    className="p-2 text-stone-400 hover:text-stone-900 transition-colors"
                 >
                   <Minus size={18} />
                 </button>
-                <span className="w-4 text-center font-semibold text-gray-900 text-lg">{quantity}</span>
+                <span className="w-6 text-center font-bold text-stone-900 text-lg">{quantity}</span>
                 <button 
                     onClick={handleIncrement}
-                    className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
+                    className="p-2 text-stone-400 hover:text-stone-900 transition-colors"
                 >
                   <Plus size={18} />
                 </button>
             </div>
             
             <div className="text-right">
-                <span className="block text-xs text-gray-400 font-medium">Prix total</span>
-                <span className="text-2xl font-bold text-gray-900 tracking-tight">
-                    {totalPrice.toLocaleString()} <span className="text-sm text-gray-500 font-medium">FCFA</span>
+                <span className="block text-[10px] text-stone-400 font-bold uppercase tracking-wide">Prix à payer</span>
+                <span className="text-2xl font-bold text-emerald-600 tracking-tight">
+                    {totalPrice.toLocaleString()} <span className="text-sm text-emerald-600/60 font-medium">FCFA</span>
                 </span>
             </div>
           </div>
@@ -137,7 +143,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ isOpen, onClose, product, o
         <div className="p-6 pt-0 bg-white">
           <button 
             onClick={handleBuy}
-            className="w-full bg-emerald-600 text-white font-bold py-4 px-4 rounded-2xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            className="w-full bg-stone-900 text-white font-bold py-4 px-4 rounded-2xl shadow-lg shadow-stone-200 hover:bg-black active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
             <ShoppingBag size={20} />
             Commander
