@@ -9,7 +9,8 @@ import AdminView from './components/AdminView';
 import AuthView from './components/AuthView';
 import ProductModal from './components/ProductModal';
 import LoadingScreen from './components/LoadingScreen';
-import InstallPWA from './components/InstallPWA'; // Import PWA
+import InstallPWA from './components/InstallPWA';
+import ThankYouModal from './components/ThankYouModal'; // Import
 import { Tab, Product, OrderItem, ProductVariant } from './types';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
@@ -18,7 +19,8 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.BOUTIQUE);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [orders, setOrders] = useState<OrderItem[]>([]); // Local state fallback
+  const [isThankYouOpen, setIsThankYouOpen] = useState(false); // State for Thank You Modal
+  const [orders, setOrders] = useState<OrderItem[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,13 +30,11 @@ function App() {
         return;
     }
 
-    // Récupérer la session actuelle au démarrage
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
 
-    // Écouter les changements d'auth (connexion/déconnexion)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -52,15 +52,14 @@ function App() {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    setTimeout(() => setSelectedProduct(null), 300); // Wait for animation
+    setTimeout(() => setSelectedProduct(null), 300);
   };
 
   const handleAddToCart = async (product: Product, quantity: number, variant: ProductVariant | null, totalPrice: number) => {
     const dateStr = new Date().toLocaleDateString('fr-FR');
 
-    // Préparation des données pour Supabase
     const newOrderData = {
-        user_id: session?.user.id, // Liaison avec l'utilisateur connecté
+        user_id: session?.user.id,
         product_name: product.name,
         variant_label: variant?.label || null,
         quantity: quantity,
@@ -69,7 +68,6 @@ function App() {
         status: 'pending'
     };
 
-    // Optimistic UI update (Local state)
     const localOrder: OrderItem = {
       id: Math.random().toString(36).substr(2, 9),
       productName: product.name,
@@ -80,7 +78,6 @@ function App() {
     };
     setOrders(prev => [localOrder, ...prev]);
 
-    // Supabase Insert
     if (supabase && session) {
       try {
         const { error } = await supabase
@@ -91,14 +88,15 @@ function App() {
             console.error('Error inserting order:', error);
             alert("Une erreur est survenue lors de la commande.");
         } else {
-            alert("Commande envoyée avec succès !");
+            // Replace alert with Thank You Modal
+            setIsThankYouOpen(true);
         }
       } catch (err) {
         console.error('Connection error:', err);
       }
     } else {
-        // Fallback si pas de connexion (ne devrait pas arriver ici car session requise)
-        console.warn("Commande locale uniquement (pas de session ou supabase)");
+        console.warn("Commande locale uniquement");
+        setIsThankYouOpen(true);
     }
   };
 
@@ -119,7 +117,6 @@ function App() {
     }
   };
 
-  // 1. État de chargement initial (vérification de la session)
   if (loading) {
     return (
       <div className="min-h-screen bg-stone-50 max-w-md mx-auto shadow-2xl border-x border-stone-200 flex items-center justify-center">
@@ -128,7 +125,6 @@ function App() {
     );
   }
 
-  // 2. Si pas connecté, afficher UNIQUEMENT la page d'authentification
   if (!session) {
     return (
       <div className="min-h-screen bg-stone-50 max-w-md mx-auto shadow-2xl border-x border-stone-200 flex flex-col justify-center">
@@ -138,7 +134,6 @@ function App() {
     );
   }
 
-  // 3. Si connecté, afficher l'application complète
   return (
     <div className="min-h-screen bg-stone-50 max-w-md mx-auto shadow-2xl overflow-hidden relative border-x border-stone-200">
       <Header onOpenProfile={() => setActiveTab(Tab.PROFIL)} />
@@ -154,6 +149,12 @@ function App() {
         onClose={handleCloseModal} 
         product={selectedProduct}
         onAddToCart={handleAddToCart}
+      />
+      
+      {/* New Thank You Modal */}
+      <ThankYouModal 
+        isOpen={isThankYouOpen}
+        onClose={() => setIsThankYouOpen(false)}
       />
 
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { OrderItem, Product, Service, UserProfile } from '../types';
+import ConfirmationModal from './ConfirmationModal';
 import { 
   Package, 
   Users, 
@@ -16,7 +17,10 @@ import {
   Upload,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  MessageCircle, 
+  Phone,
+  Trash2
 } from 'lucide-react';
 
 const AdminView: React.FC = () => {
@@ -30,17 +34,20 @@ const AdminView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
-  // Form States - Products
+  // Form States
   const [productForm, setProductForm] = useState<Partial<Product>>({ category: 'tea', price: 0, name: '', description: '', image: '' });
   const [productImageFile, setProductImageFile] = useState<File | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   
-  // Form States - Services
   const [serviceForm, setServiceForm] = useState<Partial<Service>>({ price: 0, title: '', description: '', image: '', priceUnit: '' });
   const [serviceImageFile, setServiceImageFile] = useState<File | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Delete Modal State
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'service', id: string, name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     setErrorMsg(null);
@@ -88,7 +95,6 @@ const AdminView: React.FC = () => {
       }
     } catch (err: any) { 
         console.error("Erreur commandes:", err.message || err); 
-        setErrorMsg("Erreur chargement commandes: " + (err.message || "Erreur inconnue"));
     } finally { setLoading(false); }
   };
 
@@ -111,11 +117,14 @@ const AdminView: React.FC = () => {
       const { data, error } = await supabase.from('products').select('*');
       if (error) throw error;
       if (data) {
-          setProducts(data.sort((a: any, b: any) => (b.created_at || '').localeCompare(a.created_at || '')) as Product[]);
+          setProducts(data.sort((a: any, b: any) => {
+              if (b.created_at && a.created_at) return b.created_at.localeCompare(a.created_at);
+              return 0;
+          }) as Product[]);
       }
     } catch (err: any) { 
         console.error("Erreur produits:", err.message || err);
-        setErrorMsg("Erreur chargement produits. Vérifiez que la table 'products' existe.");
+        setErrorMsg("Erreur chargement produits: " + err.message);
     } finally { setLoading(false); }
   };
 
@@ -138,51 +147,94 @@ const AdminView: React.FC = () => {
       }
     } catch (err: any) { 
         console.error("Erreur services:", err.message || err);
-        setErrorMsg("Erreur chargement services. Vérifiez que la table 'services' existe.");
+        setErrorMsg("Erreur chargement services: " + err.message);
     } finally { setLoading(false); }
   };
 
-  // --- ACTIONS ---
+  const compressAndConvertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 600; 
+          const MAX_HEIGHT = 600;
+          let width = img.width;
+          let height = img.height;
 
-  const uploadImage = async (file: File): Promise<string | null> => {
-    if (!supabase) return null;
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          resolve(dataUrl);
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
+  const sendWhatsApp = (phone: string | undefined, name: string | undefined) => {
+      if (!phone) {
+          alert("Pas de numéro de téléphone disponible.");
+          return;
+      }
+      let cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.length === 8) {
+          cleanPhone = '228' + cleanPhone;
+      }
+      const message = `Bonjour ${name || ''}, merci pour votre commande sur LYNA. Nous avons bien reçu votre demande.`;
+      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+  };
+
+  // --- DELETE LOGIC ---
+
+  const handleDeleteRequest = (type: 'product' | 'service', id: string, name: string) => {
+    setDeleteTarget({ type, id, name });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !supabase) return;
+    setIsDeleting(true);
+
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const tableName = deleteTarget.type === 'product' ? 'products' : 'services';
+      const { error } = await supabase.from(tableName).delete().eq('id', deleteTarget.id);
 
-      // Tentative de upload
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(filePath, file, {
-            upsert: false
-        });
+      if (error) throw error;
 
-      if (uploadError) {
-        // Gestion spécifique de l'erreur "Bucket not found"
-        if (uploadError.message.includes('Bucket not found') || (uploadError as any).error === 'Bucket not found') {
-             alert(
-                "ERREUR : Le bucket 'product-images' n'existe pas dans votre projet Supabase.\n\n" +
-                "SOLUTION :\n" +
-                "1. Allez sur votre dashboard Supabase > Storage\n" +
-                "2. Cliquez sur 'New Bucket'\n" +
-                "3. Nommez-le 'product-images'\n" +
-                "4. Activez 'Public bucket'\n" +
-                "5. Sauvegardez."
-             );
-             throw new Error("Bucket 'product-images' manquant.");
-        }
-        throw uploadError;
+      // Update Local State
+      if (deleteTarget.type === 'product') {
+        setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
+        if (editingProductId === deleteTarget.id) handleCancelProductEdit();
+      } else {
+        setServices(prev => prev.filter(s => s.id !== deleteTarget.id));
+        if (editingServiceId === deleteTarget.id) handleCancelServiceEdit();
       }
 
-      const { data } = supabase.storage.from('product-images').getPublicUrl(filePath);
-      return data.publicUrl;
+      setDeleteTarget(null);
     } catch (error: any) {
-      console.error('Erreur upload image:', error.message || error);
-      if (!error.message.includes("Bucket 'product-images' manquant")) {
-          alert("Erreur lors de l'upload : " + (error.message || "Erreur inconnue"));
-      }
-      return null;
+      console.error("Delete Error:", error);
+      alert(`Erreur lors de la suppression : ${error.message || 'Erreur inconnue'}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -196,30 +248,32 @@ const AdminView: React.FC = () => {
     try {
       let imageUrl = productForm.image;
       if (productImageFile) {
-        const uploadedUrl = await uploadImage(productImageFile);
-        if (uploadedUrl) imageUrl = uploadedUrl;
-        else {
-             setIsSubmitting(false);
-             return; // Stop si upload échoue
-        }
+        try { imageUrl = await compressAndConvertToBase64(productImageFile); } 
+        catch (err) { alert("Image invalide."); setIsSubmitting(false); return; }
       }
 
-      const productData = { ...productForm, image: imageUrl };
+      const productData = { 
+        name: productForm.name?.trim() || 'Produit sans nom',
+        category: productForm.category,
+        price: Number(productForm.price) || 0,
+        description: productForm.description?.trim() || '',
+        image: imageUrl || ''
+      };
 
       if (editingProductId) {
         const { error } = await supabase.from('products').update(productData).eq('id', editingProductId);
         if (error) throw error;
-        alert("Produit modifié !");
       } else {
         const { error } = await supabase.from('products').insert([productData]);
         if (error) throw error;
-        alert("Produit ajouté !");
       }
+
+      alert(editingProductId ? "Produit modifié !" : "Produit ajouté !");
       handleCancelProductEdit();
-      fetchProducts();
+      await fetchProducts();
     } catch (error: any) {
-      console.error(error);
-      alert("Erreur: " + (error.message || "Erreur inconnue"));
+      console.error("ERREUR SUPABASE:", error);
+      alert(`Erreur: ${error.message || JSON.stringify(error)}.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -247,39 +301,33 @@ const AdminView: React.FC = () => {
 
     try {
       let imageUrl = serviceForm.image;
-      
-      // Upload spécifique pour les services
       if (serviceImageFile) {
-         const uploadedUrl = await uploadImage(serviceImageFile);
-         if (uploadedUrl) imageUrl = uploadedUrl;
-         else {
-             setIsSubmitting(false);
-             return; 
-        }
+         try { imageUrl = await compressAndConvertToBase64(serviceImageFile); } 
+         catch (err) { alert("Erreur image."); setIsSubmitting(false); return; }
       }
 
       const serviceDataDB = {
-          title: serviceForm.title,
-          price: serviceForm.price,
-          price_unit: serviceForm.priceUnit,
-          description: serviceForm.description,
-          image: imageUrl
+          title: serviceForm.title?.trim() || 'Service sans titre',
+          price: Number(serviceForm.price) || 0,
+          price_unit: serviceForm.priceUnit?.trim() || '',
+          description: serviceForm.description?.trim() || '',
+          image: imageUrl || ''
       };
 
       if (editingServiceId) {
         const { error } = await supabase.from('services').update(serviceDataDB).eq('id', editingServiceId);
         if (error) throw error;
-        alert("Service modifié !");
       } else {
         const { error } = await supabase.from('services').insert([serviceDataDB]);
         if (error) throw error;
-        alert("Service ajouté !");
       }
+
+      alert(editingServiceId ? "Service modifié !" : "Service ajouté !");
       handleCancelServiceEdit();
-      fetchServices();
+      await fetchServices();
     } catch (error: any) {
-       console.error(error);
-       alert("Erreur: " + (error.message || "Erreur inconnue"));
+       console.error("ERREUR SERVICE:", error);
+       alert(`Erreur: ${error.message}.`);
     } finally {
        setIsSubmitting(false);
     }
@@ -303,18 +351,38 @@ const AdminView: React.FC = () => {
   const toggleUserRole = async (userId: string, currentRole: string | undefined) => {
     if (!supabase) return;
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    const prevUsers = [...users];
     setUsers(users.map(u => u.id === userId ? { ...u, role: newRole as 'admin' | 'user' } : u));
-    await supabase.from('app_users').update({ role: newRole }).eq('id', userId);
+    
+    const { error } = await supabase.from('app_users').update({ role: newRole }).eq('id', userId);
+    if (error) {
+        alert("Erreur rôle: " + error.message);
+        setUsers(prevUsers);
+    }
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: 'completed' | 'cancelled') => {
     if (!supabase) return;
-    await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+    const prevOrders = [...orders];
     setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+    if (error) {
+        alert("Erreur status: " + error.message);
+        setOrders(prevOrders);
+    }
   };
 
   return (
     <div className="min-h-screen bg-stone-50 pb-24 animate-in fade-in duration-500">
+      <ConfirmationModal 
+        isOpen={!!deleteTarget}
+        title={deleteTarget?.type === 'product' ? 'Supprimer le produit ?' : 'Supprimer le service ?'}
+        message={`Êtes-vous sûr de vouloir supprimer "${deleteTarget?.name}" ? Cette action est irréversible.`}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        isLoading={isDeleting}
+      />
+
       {/* Header Admin */}
       <div className="bg-stone-900 text-white p-6 rounded-b-[32px] shadow-lg mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -378,26 +446,47 @@ const AdminView: React.FC = () => {
                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${order.status === 'completed' ? 'bg-emerald-500' : order.status === 'cancelled' ? 'bg-red-500' : 'bg-yellow-400'}`}></div>
                    <div className="pl-3">
                       <div className="flex justify-between items-start mb-2">
-                        <div>
+                        <div className="flex-1">
                           <p className="text-[10px] uppercase font-bold text-stone-400 tracking-wider mb-0.5">{order.date}</p>
-                          <h3 className="font-bold text-stone-900">{order.customerName}</h3>
-                          {order.customerPhone && <p className="text-xs text-stone-500">{order.customerPhone}</p>}
+                          <h3 className="font-bold text-stone-900 text-lg">{order.customerName}</h3>
+                          {order.customerPhone && (
+                              <div className="flex items-center gap-1.5 text-stone-600 mt-0.5">
+                                  <Phone size={12} className="text-emerald-600" />
+                                  <p className="text-xs font-medium tracking-wide">{order.customerPhone}</p>
+                              </div>
+                          )}
                         </div>
-                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : order.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{order.status === 'pending' ? 'En attente' : order.status === 'completed' ? 'Livré' : 'Annulé'}</span>
+                        
+                        {/* WhatsApp Button */}
+                        {order.customerPhone && (
+                            <button 
+                                onClick={() => sendWhatsApp(order.customerPhone, order.customerName)}
+                                className="bg-emerald-50 text-emerald-600 p-2 rounded-full hover:bg-emerald-100 transition-colors"
+                                title="Envoyer un message WhatsApp"
+                            >
+                                <MessageCircle size={20} />
+                            </button>
+                        )}
                       </div>
-                      <div className="bg-stone-50 p-3 rounded-xl mb-3">
+                      
+                      <div className="bg-stone-50 p-3 rounded-xl mb-3 border border-stone-100/50">
                         <p className="font-medium text-sm text-stone-800">{order.productName}</p>
                         <div className="flex justify-between text-xs mt-1 text-stone-500">
                           <span>{order.variantLabel ? `Format: ${order.variantLabel}` : 'Standard'} x {order.quantity}</span>
                           <span className="font-bold text-stone-900">{order.totalPrice.toLocaleString()} F</span>
                         </div>
                       </div>
-                      {order.status === 'pending' && (
-                        <div className="flex gap-2 mt-2">
-                          <button onClick={() => updateOrderStatus(order.id, 'completed')} className="flex-1 bg-emerald-600 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-emerald-700"><CheckCircle size={14} /> Valider</button>
-                          <button onClick={() => updateOrderStatus(order.id, 'cancelled')} className="flex-1 bg-red-50 text-red-600 border border-red-100 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-red-100"><XCircle size={14} /> Refuser</button>
-                        </div>
-                      )}
+
+                      <div className="flex justify-between items-center mt-2">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${order.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : order.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{order.status === 'pending' ? 'En attente' : order.status === 'completed' ? 'Livré' : 'Annulé'}</span>
+                          
+                          {order.status === 'pending' && (
+                            <div className="flex gap-2">
+                              <button onClick={() => updateOrderStatus(order.id, 'completed')} className="bg-emerald-600 text-white p-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1"><CheckCircle size={14} /> Valider</button>
+                              <button onClick={() => updateOrderStatus(order.id, 'cancelled')} className="bg-white border border-red-200 text-red-500 p-2 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors flex items-center gap-1"><XCircle size={14} /> Refuser</button>
+                            </div>
+                          )}
+                      </div>
                    </div>
                 </div>
               ))
@@ -444,7 +533,7 @@ const AdminView: React.FC = () => {
                         type="number" required
                         className="w-full mt-1 p-3 bg-stone-50 rounded-xl border-none focus:ring-2 focus:ring-emerald-500/20"
                         value={productForm.price || ''}
-                        onChange={e => setProductForm({...productForm, price: parseInt(e.target.value)})}
+                        onChange={e => setProductForm({...productForm, price: parseFloat(e.target.value)})}
                       />
                    </div>
                 </div>
@@ -516,9 +605,18 @@ const AdminView: React.FC = () => {
                           <h4 className="font-bold text-stone-900 text-sm truncate">{product.name}</h4>
                           <p className="text-xs text-stone-500">{product.category === 'tea' ? 'Thé' : 'Farine'} • {product.price} F</p>
                       </div>
-                      <button onClick={() => handleEditProduct(product)} className="p-2 bg-stone-50 text-stone-600 rounded-lg hover:bg-emerald-50 hover:text-emerald-600 transition-colors">
-                          <Edit2 size={18} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditProduct(product)} className="p-2 bg-stone-50 text-stone-600 rounded-lg hover:bg-emerald-50 hover:text-emerald-600 transition-colors">
+                              <Edit2 size={18} />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleDeleteRequest('product', product.id, product.name)} 
+                            className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 hover:text-red-600 transition-colors"
+                          >
+                              <Trash2 size={18} />
+                          </button>
+                      </div>
                   </div>
                 ))}
             </div>
@@ -551,7 +649,7 @@ const AdminView: React.FC = () => {
                         type="number" required
                         className="w-full mt-1 p-3 bg-stone-50 rounded-xl border-none focus:ring-2 focus:ring-emerald-500/20"
                         value={serviceForm.price || ''}
-                        onChange={e => setServiceForm({...serviceForm, price: parseInt(e.target.value)})}
+                        onChange={e => setServiceForm({...serviceForm, price: parseFloat(e.target.value)})}
                       />
                    </div>
                    <div>
@@ -633,9 +731,18 @@ const AdminView: React.FC = () => {
                           <h4 className="font-bold text-stone-900 text-sm truncate">{service.title}</h4>
                           <p className="text-xs text-stone-500">{service.price} F {service.priceUnit ? `/ ${service.priceUnit}` : ''}</p>
                       </div>
-                      <button onClick={() => handleEditService(service)} className="p-2 bg-stone-50 text-stone-600 rounded-lg hover:bg-emerald-50 hover:text-emerald-600 transition-colors">
-                          <Edit2 size={18} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditService(service)} className="p-2 bg-stone-50 text-stone-600 rounded-lg hover:bg-emerald-50 hover:text-emerald-600 transition-colors">
+                              <Edit2 size={18} />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleDeleteRequest('service', service.id, service.title)} 
+                            className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 hover:text-red-600 transition-colors"
+                          >
+                              <Trash2 size={18} />
+                          </button>
+                      </div>
                   </div>
                 ))}
             </div>
