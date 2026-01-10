@@ -148,20 +148,40 @@ const AdminView: React.FC = () => {
     if (!supabase) return null;
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
       const filePath = `${fileName}`;
 
+      // Tentative de upload
       const { error: uploadError } = await supabase.storage
         .from('product-images')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+            upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        // Gestion spécifique de l'erreur "Bucket not found"
+        if (uploadError.message.includes('Bucket not found') || (uploadError as any).error === 'Bucket not found') {
+             alert(
+                "ERREUR : Le bucket 'product-images' n'existe pas dans votre projet Supabase.\n\n" +
+                "SOLUTION :\n" +
+                "1. Allez sur votre dashboard Supabase > Storage\n" +
+                "2. Cliquez sur 'New Bucket'\n" +
+                "3. Nommez-le 'product-images'\n" +
+                "4. Activez 'Public bucket'\n" +
+                "5. Sauvegardez."
+             );
+             throw new Error("Bucket 'product-images' manquant.");
+        }
+        throw uploadError;
+      }
 
       const { data } = supabase.storage.from('product-images').getPublicUrl(filePath);
       return data.publicUrl;
     } catch (error: any) {
       console.error('Erreur upload image:', error.message || error);
-      alert("Erreur upload. Vérifiez que le bucket 'product-images' existe dans Supabase Storage.");
+      if (!error.message.includes("Bucket 'product-images' manquant")) {
+          alert("Erreur lors de l'upload : " + (error.message || "Erreur inconnue"));
+      }
       return null;
     }
   };
@@ -178,6 +198,10 @@ const AdminView: React.FC = () => {
       if (productImageFile) {
         const uploadedUrl = await uploadImage(productImageFile);
         if (uploadedUrl) imageUrl = uploadedUrl;
+        else {
+             setIsSubmitting(false);
+             return; // Stop si upload échoue
+        }
       }
 
       const productData = { ...productForm, image: imageUrl };
@@ -228,6 +252,10 @@ const AdminView: React.FC = () => {
       if (serviceImageFile) {
          const uploadedUrl = await uploadImage(serviceImageFile);
          if (uploadedUrl) imageUrl = uploadedUrl;
+         else {
+             setIsSubmitting(false);
+             return; 
+        }
       }
 
       const serviceDataDB = {
